@@ -1,0 +1,572 @@
+---
+title: "Group Students"
+author: "DennieT"
+date: "2025-07-1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Import packages
+```{r}
+#library("tidyverse") #Not needed for data cleanup
+library("lubridate")
+library(dplyr)
+
+library(ggplot2)
+
+
+library(shiny)
+library(shinythemes) #for themes in shiny app
+library(DT)
+```
+
+
+
+
+Set Directory
+```{r}
+here::i_am("PitchingStats.Rmd")
+```
+
+
+
+Load data
+```{r}
+PitchData <- read.csv("PitchingData2025.csv")
+```
+
+
+Data Cleanup
+```{r}
+#Change Date column to "Date" data type
+PitchData$Date = as.Date(PitchData$Date,
+                     format = "%m/%d/%y") # convert to date
+
+#class(BatData$Date) Can check in console the data type to confirm
+```
+
+
+Need to convert inning (decimal form) to inning (showing outs as fractions)
+```{r}
+convert_inning <- function(inn_str) {
+  parts <- strsplit(as.character(inn_str), "\\.")[[1]]
+  whole <- as.numeric(parts[1])
+  outs <- ifelse(length(parts) > 1, as.numeric(parts[2]), 0)
+  
+  if (outs %in% 0:2) {
+    return(whole + outs / 3)
+  } else {
+    stop(paste("Invalid outs value in:", inn_str))
+  }
+}
+
+
+# Add converted innings column
+PitchData$ConvertedInnings <- sapply(PitchData$InningPitched, convert_inning)
+```
+
+
+
+Calculate Justin's Total Innings Pitch
+```{r}
+#Get all unique Justin's outings
+Justin <- subset(x = PitchData, Name == "Justin Tsan")
+
+# Calculate total innings pitched
+JustinTotalInningPitch <- sum(Justin$ConvertedInnings, na.rm = TRUE)
+```
+
+
+
+Calculate Justin's Total Earned Run
+```{r}
+JustinER <- sum(Justin$RunScored, na.rm = TRUE)
+```
+
+
+
+Calculate Justin's Earned Run Average (ERA)
+```{r}
+JustinERA <- (JustinER/JustinTotalInningPitch) * 3 #3 bc each game last 3 innings
+```
+
+
+
+Calculate Justin's Walks Hits per Innings Pitched (WHIP)
+```{r}
+JustinBB <- sum(Justin$BB, na.rm = TRUE)
+JustinHit <- sum(Justin$Hit, na.rm = TRUE)
+
+JustinWHIP <- (JustinBB+JustinHit)/JustinTotalInningPitch
+```
+
+
+
+Justin Ball/Strike Profile
+```{r}
+# Step 1: Summarize data
+JustinBalls <- sum(Justin$Ball, na.rm = TRUE)
+JustinStrikes <- sum(Justin$Strike, na.rm = TRUE)
+JustinTotalPitch <- JustinBalls + JustinStrikes
+
+# Step 2: Create a data frame
+pitch_df <- data.frame(
+  PitchType = c("Ball", "Strike"),
+  Count = c(JustinBalls, JustinStrikes)
+)
+
+# Step 3: Calculate percentage and label position
+pitch_df$Percentage <- pitch_df$Count / JustinTotalPitch
+
+
+# Step 4: Plot with ggplot2
+ggplot(pitch_df, aes(x = "", y = Percentage, fill = PitchType)) +
+  geom_bar(stat = "identity", width = 1, color = "black") +
+  coord_polar("y") +
+  geom_text(aes(label = paste0(round(Percentage * 100), "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("skyblue", "tomato")) +
+  theme_void() +
+  ggtitle("Justin Pitch Profile")
+```
+
+
+
+Justin Out Profile
+```{r}
+# Step 1: Summarize data
+JustinGO <- sum(Justin$GO, na.rm = TRUE)
+JustinFO <- sum(Justin$FO, na.rm = TRUE)
+JustinSO <- sum(Justin$SO, na.rm = TRUE)
+JustinTotalOuts <- JustinGO + JustinFO + JustinSO
+
+# Step 2: Create a data frame
+out_df <- data.frame(
+  OutType = c("Groundout", "Flyout","Strikeout"),
+  Count = c(JustinGO, JustinFO, JustinSO)
+)
+
+# Step 3: Calculate percentage and label position
+out_df$Percentage <- out_df$Count / JustinTotalOuts
+
+
+# Step 4: Plot with ggplot2
+ggplot(out_df, aes(x = "", y = Percentage, fill = OutType)) +
+  geom_bar(stat = "identity", width = 1, color = "black") +
+  coord_polar("y") +
+  geom_text(aes(label = paste0(round(Percentage * 100), "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("lightgreen", "green", "forestgreen")) +
+  theme_void() +
+  ggtitle("Justin Out Profile")
+```
+
+
+
+Justin Result of At-Bat Profile
+```{r}
+# Step 1: Summarize data
+JustinGO <- sum(Justin$GO, na.rm = TRUE)
+JustinFO <- sum(Justin$FO, na.rm = TRUE)
+JustinSO <- sum(Justin$SO, na.rm = TRUE)
+JustinBB <- sum(Justin$BB, na.rm = TRUE)
+JustinHit <- sum(Justin$Hit, na.rm = TRUE)
+JustinTotalResult <- JustinGO + JustinFO + JustinSO + JustinBB + JustinHit
+
+# Step 2: Create a data frame
+result_df <- data.frame(
+  PlayResult = c("Groundout", "Flyout", "Strikeout", "Walk", "Hit"),
+  Count = c(JustinGO, JustinFO, JustinSO, JustinBB, JustinHit)
+)
+
+# Step 3: Calculate percentage
+result_df$Percentage <- result_df$Count / JustinTotalResult
+
+#Reorder slices of the pie
+result_df$PlayResult <- factor(result_df$PlayResult,
+  levels = c("Groundout", "Flyout", "Strikeout", "Walk", "Hit")  # Walk and Hit adjacent
+)
+
+
+
+ggplot(result_df, aes(x = "", y = Percentage, fill = PlayResult)) +
+  geom_bar(stat = "identity", width = 1, color = "black") +
+  coord_polar("y") +
+  geom_text(data = subset(result_df, Percentage > 0.05),  # filter for >5%
+            aes(label = paste0(round(Percentage * 100), "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("lightgreen", "green", "forestgreen", "firebrick","tomato")) +
+  theme_void() +
+  ggtitle("Justin Result of At-Bat Profile")
+```
+
+
+
+
+Function to calculate ERA
+```{r}
+CalcERA <- function(data, data_column, PlayerName) {
+  
+  # Filter data for the player
+  player_data <- subset(data, data[[data_column]] == PlayerName)
+  
+  # Check if data exists
+  if (nrow(player_data) == 0) {
+    stop("No data found for the specified player.")
+  }
+  
+  # Calculate total innings pitched (from player's data only)
+  TotalInningPitch <- sum(player_data$ConvertedInnings, na.rm = TRUE)
+  
+  # Calculate total earned runs (from player's data only)
+  TotalER <- sum(player_data$RunScored, na.rm = TRUE)
+  
+  # Avoid division by zero
+  if (TotalInningPitch == 0) {
+    warning("Total innings pitched is 0. Returning NA for ERA.")
+    return(NA_real_)
+  }
+  
+  # Calculate ERA (earned runs per 3 innings)
+  ERA <- (TotalER / TotalInningPitch) * 3
+  
+  return(ERA)
+}
+
+```
+
+
+
+
+Function to calculate WHIP
+```{r}
+CalcWHIP <- function(data, data_column, PlayerName) {
+  
+  # Filter data for the player
+  player_data <- subset(data, data[[data_column]] == PlayerName)
+  
+  # Check if data exists
+  if (nrow(player_data) == 0) {
+    stop("No data found for the specified player.")
+  }
+  
+  # Sum from player_data only
+  TotalBB <- sum(player_data$BB, na.rm = TRUE)
+  TotalHit <- sum(player_data$Hit, na.rm = TRUE)
+  TotalInningPitch <- sum(player_data$ConvertedInnings, na.rm = TRUE)
+  
+  # Avoid division by zero
+  if (TotalInningPitch == 0) {
+    warning("Total innings pitched is 0. Returning NA for WHIP.")
+    return(NA_real_)
+  }
+  
+  # Calculate WHIP
+  WHIP <- (TotalBB + TotalHit) / TotalInningPitch
+  
+  return(WHIP)
+}
+```
+
+
+
+Function to draw pie charts
+```{r}
+PieChart <- function(data, data_column, PlayerName) {
+  
+  # Filter data for the player
+  player_data  <- subset(data, data[[data_column]] == PlayerName)
+  
+  if (nrow(player_data) == 0) {
+    stop("No data found for the specified player.")
+  }
+
+  # Step 1: Summarize data
+  PlayerBalls <- sum(player_data$Ball, na.rm = TRUE)
+  PlayerStrikes <- sum(player_data$Strike, na.rm = TRUE)
+  PlayerTotalPitch <- PlayerBalls + PlayerStrikes
+
+  PlayerGO <- sum(player_data$GO, na.rm = TRUE)
+  PlayerFO <- sum(player_data$FO, na.rm = TRUE)
+  PlayerSO <- sum(player_data$SO, na.rm = TRUE)
+  PlayerTotalOuts <- PlayerGO + PlayerFO + PlayerSO
+
+  PlayerBB <- sum(player_data$BB, na.rm = TRUE)
+  PlayerHit <- sum(player_data$Hit, na.rm = TRUE)
+  PlayerTotalResult <- PlayerGO + PlayerFO + PlayerSO + PlayerBB + PlayerHit
+
+  # Step 2: Create data frames
+  pitch_df <- data.frame(
+    PitchType = c("Ball", "Strike"),
+    Count = c(PlayerBalls, PlayerStrikes)
+  )
+
+  out_df <- data.frame(
+    OutType = c("Groundout", "Flyout","Strikeout"),
+    Count = c(PlayerGO, PlayerFO, PlayerSO)
+  )
+
+  result_df <- data.frame(
+    PlayResult = c("Groundout", "Flyout", "Strikeout", "Walk", "Hit"),
+    Count = c(PlayerGO, PlayerFO, PlayerSO, PlayerBB, PlayerHit)
+  )
+
+  # Step 3: Calculate percentages
+  pitch_df$Percentage <- pitch_df$Count / PlayerTotalPitch
+  out_df$Percentage <- out_df$Count / PlayerTotalOuts
+  result_df$Percentage <- result_df$Count / PlayerTotalResult
+
+  # Reorder slices in result pie chart
+  result_df$PlayResult <- factor(result_df$PlayResult,
+                                 levels = c("Groundout", "Flyout", "Strikeout", "Walk", "Hit"))
+
+  # Step 4: Plotting
+  plot1 <- ggplot(pitch_df, aes(x = "", y = Percentage, fill = PitchType)) +
+    geom_bar(stat = "identity", width = 1, color = "black") +
+    coord_polar("y") +
+    geom_text(aes(label = paste0(round(Percentage * 100), "%")),
+              position = position_stack(vjust = 0.5),
+              color = "black", size = 5, fontface = "bold") +
+    scale_fill_manual(values = c("skyblue", "tomato")) +
+    theme_void() +
+    ggtitle(paste(PlayerName, "Pitch Profile"))
+
+  plot2 <- ggplot(out_df, aes(x = "", y = Percentage, fill = OutType)) +
+    geom_bar(stat = "identity", width = 1, color = "black") +
+    coord_polar("y") +
+    geom_text(aes(label = paste0(round(Percentage * 100), "%")),
+              position = position_stack(vjust = 0.5),
+              color = "black", size = 5, fontface = "bold") +
+    scale_fill_manual(values = c("lightgreen", "green", "forestgreen")) +
+    theme_void() +
+    ggtitle(paste(PlayerName, "Out Profile"))
+
+  plot3 <- ggplot(result_df, aes(x = "", y = Percentage, fill = PlayResult)) +
+    geom_bar(stat = "identity", width = 1, color = "black") +
+    coord_polar("y") +
+    geom_text(data = subset(result_df, Percentage > 0.05),
+              aes(label = paste0(round(Percentage * 100), "%")),
+              position = position_stack(vjust = 0.5),
+              color = "black", size = 5, fontface = "bold") +
+    scale_fill_manual(values = c("lightgreen", "green", "forestgreen", "firebrick", "tomato")) +
+    theme_void() +
+    ggtitle(paste(PlayerName, "Result of At-Bat Profile"))
+
+  # Return all plots
+  return(list(
+    PitchProfile = plot1,
+    OutProfile = plot2,
+    ResultProfile = plot3
+  ))
+}
+```
+
+
+
+
+
+Test out functions
+```{r}
+CalcERA(PitchData, "Name", "Justin Tsan")
+CalcWHIP(PitchData, "Name", "Justin Tsan")
+PieChart(PitchData, "Name", "Justin Tsan")
+```
+
+
+Table of result
+```{r}
+PlayerNames <- unique(PitchData$Name)
+
+results_df <- data.frame(
+  Name = character(),
+  IP = numeric(),
+  Hits = numeric(),
+  Runs = numeric(),
+  BB = numeric(),
+  SO = numeric(),
+  HR = numeric(),
+  ERA = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (player in PlayerNames) {
+  player_data <- subset(PitchData, Name == player)
+  
+  total_IP <- sum(player_data$ConvertedInnings, na.rm = TRUE)
+  total_Hits <- sum(player_data$Hit, na.rm = TRUE)
+  total_Runs <- sum(player_data$RunScored, na.rm = TRUE)
+  total_BB <- sum(player_data$BB, na.rm = TRUE)
+  total_SO <- sum(player_data$SO, na.rm = TRUE)
+  total_HR <- sum(player_data$HR, na.rm = TRUE)
+  
+  era <- CalcERA(PitchData, "Name", player)
+  
+  # WHIP removed per your order, but can add if needed
+  
+  row <- data.frame(
+    Name = player,
+    IP = total_IP,
+    Hits = total_Hits,
+    Runs = total_Runs,
+    BB = total_BB,
+    SO = total_SO,
+    HR = total_HR,
+    ERA = era,
+    stringsAsFactors = FALSE
+  )
+  
+  results_df <- rbind(results_df, row)
+}
+
+print(results_df)
+```
+
+
+
+
+```{r}
+ui <- fluidPage(
+  theme = shinytheme("spacelab"),
+  titlePanel("Pitching Stats App"),
+  
+  tabsetPanel(id = "tabs",
+    tabPanel("Pitching Stats",
+      DTOutput("pitching_table")
+    ),
+    
+    tabPanel("Player Analysis",
+      h3(textOutput("selected_player_title")),
+      DTOutput("player_stats_table"),
+      h4("Team Averages"),
+      DTOutput("team_avg_table"),
+      fluidRow(
+        column(4, plotOutput("pie_chart1")),
+        column(4, plotOutput("pie_chart2")),
+        column(4, plotOutput("pie_chart3"))
+      )
+    ),
+    
+    tabPanel("Glossary",
+      h3("Glossary of Pitching Stats & Acronyms", style = "margin-top: 30px;"),
+      tags$ul(style = "font-size: 25px; line-height: 1.8;",
+        tags$li(tags$strong("IP:"), " Innings Pitched – total innings a pitcher has thrown."),
+        tags$li(tags$strong("Hits:"), " Number of hits allowed by the pitcher."),
+        tags$li(tags$strong("Runs:"), " Runs scored against the pitcher."),
+        tags$li(tags$strong("BB:"), " Base on Balls (Walks) – number of walks issued including hit by pitch."),
+        tags$li(tags$strong("SO:"), " Strikeouts – number of batters struck out."),
+        tags$li(tags$strong("HR:"), " Home Runs allowed."),
+        tags$li(tags$strong("ERA:"), " Earned Run Average – average earned runs allowed per 3 innings."),
+        tags$li(tags$strong("Ball:"), " A pitch thrown outside the strike zone."),
+        tags$li(tags$strong("Strike:"), " A pitch thrown inside the strike zone or swung at and missed."),
+        tags$li(tags$strong("GO:"), " Groundouts – batter is out by hitting ground ball."),
+        tags$li(tags$strong("FO:"), " Flyouts – batter is out by hitting fly ball."),
+        tags$li(tags$strong("Hit:"), " Batter reaches base by getting a hit.")
+      )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  # Load your PitchData here
+  # PitchData <- read.csv("your_pitch_data.csv")
+  
+  PlayerNames <- unique(PitchData$Name)
+  
+  results_df <- data.frame(
+    Name = character(),
+    IP = numeric(),
+    Hits = numeric(),
+    Runs = numeric(),
+    BB = numeric(),
+    SO = numeric(),
+    HR = numeric(),
+    ERA = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (player in PlayerNames) {
+    player_data <- subset(PitchData, Name == player)
+    total_IP <- sum(player_data$ConvertedInnings, na.rm = TRUE)
+    total_Hits <- sum(player_data$Hit, na.rm = TRUE)
+    total_Runs <- sum(player_data$RunScored, na.rm = TRUE)
+    total_BB <- sum(player_data$BB, na.rm = TRUE)
+    total_SO <- sum(player_data$SO, na.rm = TRUE)
+    total_HR <- sum(player_data$HR, na.rm = TRUE)
+    era <- tryCatch(CalcERA(PitchData, "Name", player), error = function(e) NA_real_)
+    
+    row <- data.frame(
+      Name = player,
+      IP = round(total_IP, 3),
+      Hits = round(total_Hits, 3),
+      Runs = round(total_Runs, 3),
+      BB = round(total_BB, 3),
+      SO = round(total_SO, 3),
+      HR = round(total_HR, 3),
+      ERA = round(era, 3),
+      stringsAsFactors = FALSE
+    )
+    results_df <- rbind(results_df, row)
+  }
+  
+  output$pitching_table <- renderDT({
+    datatable(results_df, options = list(pageLength = 15, scrollX = TRUE),
+              selection = "single")
+  })
+  
+  selected_player <- reactiveVal(NULL)
+  
+  observeEvent(input$pitching_table_rows_selected, {
+    sel <- input$pitching_table_rows_selected
+    if (length(sel)) {
+      selected_player(results_df$Name[sel])
+      updateTabsetPanel(session, "tabs", selected = "Player Analysis")
+    }
+  })
+  
+  output$selected_player_title <- renderText({
+    req(selected_player())
+    paste("Pitching Stats & Pie Charts for", selected_player())
+  })
+  
+  output$player_stats_table <- renderDT({
+    req(selected_player())
+    player_row <- results_df[results_df$Name == selected_player(), , drop=FALSE]
+    datatable(player_row, options = list(dom = 't', paging = FALSE), rownames = FALSE)
+  })
+  
+  output$team_avg_table <- renderDT({
+    numeric_cols <- sapply(results_df, is.numeric)
+    team_means <- colMeans(results_df[, numeric_cols], na.rm = TRUE)
+    team_means <- round(team_means, 3)
+    team_avg_df <- data.frame(t(team_means))
+    team_avg_df <- cbind(Name = "Team Average", team_avg_df)
+    
+    datatable(team_avg_df, options = list(dom = 't', paging = FALSE), rownames = FALSE)
+  })
+  
+  pieplots <- reactive({
+    req(selected_player())
+    PieChart(PitchData, "Name", selected_player())
+  })
+  
+  output$pie_chart1 <- renderPlot({
+    pieplots()$PitchProfile
+  })
+  output$pie_chart2 <- renderPlot({
+    pieplots()$OutProfile
+  })
+  output$pie_chart3 <- renderPlot({
+    pieplots()$ResultProfile
+  })
+}
+
+shinyApp(ui, server)
+```
+
