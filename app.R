@@ -14,7 +14,7 @@ PitchData2025$Year <- 2025
 PitchData2026$Year <- 2026
 
 PitchData <- bind_rows(PitchData2025, PitchData2026)
-PitchData$Date <- as.Date(PitchData$Date, format = "%m/%d/%y")
+PitchData$Date <- as.Date(PitchData$Date, format = "%m/%d/%Y")
 
 # -------------------------
 # HELPER: FILTER YEAR (NEW)
@@ -176,14 +176,16 @@ ui <- fluidPage(
     
     tabPanel("Glossary",
              tags$ul(
-               tags$li("IP: Innings Pitched"),
-               tags$li("ERA: Earned Run Average (per 3 innings)"),
-               tags$li("WHIP: Walks + Hits per Inning"),
-               tags$li("GO: Groundout"),
-               tags$li("FO: Flyout"),
-               tags$li("SO: Strikeout"),
-               tags$li("BB: Walk"),
-               tags$li("Hit: Hits allowed")
+               style = "line-height: 1.8;",
+               
+               tags$li(tags$strong("IP:"), " Innings Pitched"),
+               tags$li(tags$strong("ERA:"), " Earned Run Average (per 3 innings)"),
+               tags$li(tags$strong("WHIP:"), " Walks + Hits per Inning"),
+               tags$li(tags$strong("GO:"), " Groundout or Forceout (Fielder's Choice)"),
+               tags$li(tags$strong("FO:"), " Flyout"),
+               tags$li(tags$strong("SO:"), " Strikeout"),
+               tags$li(tags$strong("BB:"), " Walk"),
+               tags$li(tags$strong("Hit:"), " Hits allowed (Single, Double, Triple, Home Run, or runner reached base due to ERROR)")
              )
     )
   )
@@ -313,8 +315,13 @@ server <- function(input, output, session) {
     ball[is.na(ball)] <- 0
     strike[is.na(strike)] <- 0
     
-    plot(df$Game, ball, type = "b", col = "tomato",
-         ylim = c(0,100), pch = 16)
+    plot(df$Game, ball, 
+         type = "b", 
+         col = "tomato",
+         ylim = c(0,100), 
+         pch = 16,
+         xlab = "Game",
+         ylab = "Percentage")
     
     lines(df$Game, strike, type = "b", col = "steelblue", pch = 16)
     
