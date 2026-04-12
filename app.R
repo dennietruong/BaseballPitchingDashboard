@@ -123,7 +123,7 @@ PieChart <- function(df) {
 # -------------------------
 ui <- fluidPage(
   theme = shinytheme("spacelab"),
-  titlePanel("Pitching Dashboard"),
+  titlePanel("Pitching Stats App"),
   
   tabsetPanel(
     
