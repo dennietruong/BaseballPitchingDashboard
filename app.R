@@ -17,6 +17,14 @@ PitchData <- bind_rows(PitchData2025, PitchData2026)
 PitchData$Date <- as.Date(PitchData$Date, format = "%m/%d/%y")
 
 # -------------------------
+# HELPER: FILTER YEAR (NEW)
+# -------------------------
+filter_year <- function(df, year_input) {
+  if (is.null(year_input) || year_input == "All") return(df)
+  df %>% filter(Year == as.numeric(year_input))
+}
+
+# -------------------------
 # CONVERT INNINGS
 # -------------------------
 convert_inning <- function(x) {
@@ -39,29 +47,23 @@ PitchData$ConvertedInnings <- round(convert_inning(PitchData$InningPitched), 2)
 # -------------------------
 CalcERA <- function(data, player_col, player_name) {
   df <- data[data[[player_col]] == player_name, ]
-  
   ip <- sum(df$ConvertedInnings, na.rm = TRUE)
   er <- sum(df$RunScored, na.rm = TRUE)
-  
   if (ip == 0) return(NA_real_)
-  
   round((er / ip) * 3, 2)
 }
 
 CalcWHIP <- function(data, player_col, player_name) {
   df <- data[data[[player_col]] == player_name, ]
-  
   ip <- sum(df$ConvertedInnings, na.rm = TRUE)
   bb <- sum(df$BB, na.rm = TRUE)
   h  <- sum(df$Hit, na.rm = TRUE)
-  
   if (ip == 0) return(NA_real_)
-  
   round((bb + h) / ip, 2)
 }
 
 # -------------------------
-# ERA COLOR STYLE
+# ERA STYLE
 # -------------------------
 era_style <- function(dt) {
   formatStyle(
@@ -75,15 +77,13 @@ era_style <- function(dt) {
 }
 
 # -------------------------
-# PIE FUNCTION (PLAYER TAB)
+# PIE CHART
 # -------------------------
 PieChart <- function(df) {
-  
   if (nrow(df) == 0) return(NULL)
   
   par(mfrow = c(1,3), mar = c(4,4,4,2))
   
-  # Pitch
   balls <- sum(df$Ball, na.rm = TRUE)
   strikes <- sum(df$Strike, na.rm = TRUE)
   total1 <- max(balls + strikes, 1)
@@ -94,7 +94,6 @@ PieChart <- function(df) {
       col = c("skyblue","tomato"),
       main = "Pitch Profile")
   
-  # Out
   go <- sum(df$GO, na.rm = TRUE)
   fo <- sum(df$FO, na.rm = TRUE)
   so <- sum(df$SO, na.rm = TRUE)
@@ -106,7 +105,6 @@ PieChart <- function(df) {
       col = c("lightgreen","green","forestgreen"),
       main = "Out Profile")
   
-  # Result
   bb <- sum(df$BB, na.rm = TRUE)
   hit <- sum(df$Hit, na.rm = TRUE)
   total3 <- max(go + fo + so + bb + hit, 1)
@@ -127,23 +125,20 @@ ui <- fluidPage(
   
   tabsetPanel(
     
-    # -------------------------
     tabPanel("Pitching Stats",
              selectInput("year_stats", "Select Year:",
-                         choices = sort(unique(PitchData$Year))),
+                         choices = c("All", sort(unique(PitchData$Year)))),
              DTOutput("table")
     ),
     
-    # -------------------------
     tabPanel("Player Analysis",
              
              selectInput("year_player", "Select Year:",
-                         choices = sort(unique(PitchData$Year))),
+                         choices = c("All", sort(unique(PitchData$Year)))),
              
              selectInput("player_select", "Select Player:", choices = NULL),
              
              h3(textOutput("player_title")),
-             
              DTOutput("player_table"),
              
              h4("Team Averages"),
@@ -156,11 +151,10 @@ ui <- fluidPage(
              plotOutput("pie_all")
     ),
     
-    # -------------------------
     tabPanel("Game Breakdown",
              
              selectInput("year_game", "Select Year:",
-                         choices = sort(unique(PitchData$Year))),
+                         choices = c("All", sort(unique(PitchData$Year)))),
              
              selectInput("player_game", "Select Player:", choices = NULL),
              
@@ -180,7 +174,6 @@ ui <- fluidPage(
              )
     ),
     
-    # -------------------------
     tabPanel("Glossary",
              tags$ul(
                tags$li("IP: Innings Pitched"),
@@ -203,30 +196,30 @@ server <- function(input, output, session) {
   
   # Players (stats)
   observe({
-    req(input$year_player)
+    df <- filter_year(PitchData, input$year_player)
+    
     updateSelectInput(session, "player_select",
-                      choices = unique(PitchData$Name[PitchData$Year == input$year_player]))
+                      choices = unique(df$Name))
   })
   
   # Players (game)
   observe({
-    req(input$year_game)
+    df <- filter_year(PitchData, input$year_game)
+    
     updateSelectInput(session, "player_game",
-                      choices = unique(PitchData$Name[PitchData$Year == input$year_game]))
+                      choices = unique(df$Name))
   })
   
   # Dates
   observe({
-    req(input$year_game, input$player_game)
+    req(input$player_game)
     
-    dates <- PitchData %>%
-      filter(Year == input$year_game,
-             Name == input$player_game) %>%
-      arrange(Date) %>%
-      pull(Date)
+    df <- filter_year(PitchData, input$year_game) %>%
+      filter(Name == input$player_game) %>%
+      arrange(Date)
     
     updateSelectInput(session, "game_date",
-                      choices = unique(dates))
+                      choices = unique(df$Date))
   })
   
   # -------------------------
@@ -234,7 +227,7 @@ server <- function(input, output, session) {
   # -------------------------
   output$table <- renderDT({
     
-    df <- PitchData %>% filter(Year == input$year_stats)
+    df <- filter_year(PitchData, input$year_stats)
     
     res <- bind_rows(lapply(unique(df$Name), function(p) {
       pd <- df[df$Name == p, ]
@@ -262,9 +255,8 @@ server <- function(input, output, session) {
     
     req(input$player_select)
     
-    df <- PitchData %>%
-      filter(Year == input$year_player,
-             Name == input$player_select)
+    df <- filter_year(PitchData, input$year_player) %>%
+      filter(Name == input$player_select)
     
     datatable(data.frame(
       Name = input$player_select,
@@ -284,7 +276,7 @@ server <- function(input, output, session) {
   # -------------------------
   output$team_avg_table <- renderDT({
     
-    df <- PitchData %>% filter(Year == input$year_player)
+    df <- filter_year(PitchData, input$year_player)
     
     datatable(data.frame(
       Name = "Team Avg",
@@ -306,9 +298,8 @@ server <- function(input, output, session) {
     
     req(input$player_select)
     
-    df <- PitchData %>%
-      filter(Year == input$year_player,
-             Name == input$player_select) %>%
+    df <- filter_year(PitchData, input$year_player) %>%
+      filter(Name == input$player_select) %>%
       arrange(Date)
     
     df$Game <- seq_len(nrow(df))
@@ -337,11 +328,11 @@ server <- function(input, output, session) {
   # PLAYER PIES
   # -------------------------
   output$pie_all <- renderPlot({
+    
     req(input$player_select)
     
-    df <- PitchData %>%
-      filter(Year == input$year_player,
-             Name == input$player_select)
+    df <- filter_year(PitchData, input$year_player) %>%
+      filter(Name == input$player_select)
     
     PieChart(df)
   })
@@ -353,9 +344,8 @@ server <- function(input, output, session) {
     
     req(input$player_game, input$game_date)
     
-    df <- PitchData %>%
-      filter(Year == input$year_game,
-             Name == input$player_game,
+    df <- filter_year(PitchData, input$year_game) %>%
+      filter(Name == input$player_game,
              Date == input$game_date)
     
     datatable(data.frame(
@@ -379,9 +369,8 @@ server <- function(input, output, session) {
     
     req(input$player_game)
     
-    df <- PitchData %>%
-      filter(Year == input$year_game,
-             Name == input$player_game)
+    df <- filter_year(PitchData, input$year_game) %>%
+      filter(Name == input$player_game)
     
     datatable(data.frame(
       Name = input$player_game,
@@ -398,15 +387,14 @@ server <- function(input, output, session) {
   })
   
   # -------------------------
-  # GAME PIE CHARTS (FIXED + GUARANTEED)
+  # GAME PIE CHARTS
   # -------------------------
   output$game_pitch_pie <- renderPlot({
     
     req(input$player_game, input$game_date)
     
-    df <- PitchData %>%
-      filter(Year == input$year_game,
-             Name == input$player_game,
+    df <- filter_year(PitchData, input$year_game) %>%
+      filter(Name == input$player_game,
              Date == input$game_date)
     
     validate(need(nrow(df) > 0, "No data"))
@@ -426,9 +414,8 @@ server <- function(input, output, session) {
     
     req(input$player_game, input$game_date)
     
-    df <- PitchData %>%
-      filter(Year == input$year_game,
-             Name == input$player_game,
+    df <- filter_year(PitchData, input$year_game) %>%
+      filter(Name == input$player_game,
              Date == input$game_date)
     
     validate(need(nrow(df) > 0, "No data"))
